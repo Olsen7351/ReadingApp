@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Reader & Notebook</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        .touch-none {
+            touch-action: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #2d3748; /* dark:gray-800 */
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4a5568; /* dark:gray-600 */
+            border-radius: 4px;
+        }
+        html.light .custom-scrollbar::-webkit-scrollbar-track {
+            background: #edf2f7; /* light:gray-200 */
+        }
+        html.light .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #a0aec0; /* light:gray-400 */
+        }
+        #library-view, #reader-view {
+            transition: opacity 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased overflow-hidden">
+
+    <div id="library-view" class="w-screen h-screen flex flex-col">
+        <header class="flex-shrink-0 p-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <h1 class="text-2xl font-bold">My Library</h1>
+            <div>
+                 <input type="file" id="addBookInput" class="hidden" accept=".pdf">
+                 <button id="addBookBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-semibold">Add New Book</button>
+            </div>
+        </header>
+        <main id="book-grid" class="flex-grow p-6 overflow-y-auto custom-scrollbar grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            <div id="library-loader" class="col-span-full h-full flex flex-col items-center justify-center text-gray-500 hidden">
+                 <svg class="animate-spin h-8 w-8 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="mt-2">Loading your library...</p>
+            </div>
+        </main>
+    </div>
+
+    <div id="reader-view" class="hidden opacity-0 w-screen h-screen">
+        <div id="app" class="flex flex-col md:flex-row h-full w-full">
+            <div class="w-full md:w-1/2 h-1/2 md:h-full flex flex-col border-r border-gray-200 dark:border-gray-700">
+                <div class="flex-shrink-0 p-2 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                    <div class="flex items-center gap-2">
+                        <button id="backToLibraryBtn" title="Back to Library" class="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700">
+                           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        </button>
+                        <h2 id="reader-title" class="text-lg font-semibold truncate">Reader</h2>
+                    </div>
+                </div>
+                 <div id="bookContainerWrapper" class="relative w-full h-full bg-white dark:bg-gray-900">
+                    <div id="bookContainer" class="w-full h-full overflow-y-auto custom-scrollbar p-0 md:p-4 flex flex-col items-center"></div>
+                    <div id="pdfLoader" class="absolute inset-0 bg-gray-900 bg-opacity-75 flex-col items-center justify-center hidden">
+                        <svg class="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span id="pdf-load-status" class="ml-2 mt-2 text-white">Loading PDF...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full md:w-1/2 h-1/2 md:h-full flex flex-col">
+                <div class="flex-shrink-0 p-2 flex items-center justify-between flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                    <h2 class="text-lg font-semibold">Notebook</h2>
+                    <div class="flex items-center gap-3">
+                        <input type="color" id="penColor" value="#FFFFFF" class="w-8 h-8 p-0 border-none rounded-full cursor-pointer bg-transparent" title="Pen Color">
+                        <div class="flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
+                            <input type="range" id="penSize" min="1" max="20" value="3" class="w-24 cursor-pointer" title="Pen Size">
+                        </div>
+                        <button id="eraserBtn" class="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700" title="Eraser">
+                            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M16.24 3.56c-.97-.97-2.55-.97-3.52 0L5.86 10.42c-.97.97-.97 2.55 0 3.52l.14.14L15.42 24l8.42-8.42-1.12-1.12-1.43 1.43-1.41-1.41 1.43-1.43-1.41-1.41 1.43-1.43-1.41-1.41 1.43-1.43-1.41-1.41 1.43-1.43-1.41-1.41-11.3-11.3zM8.69 11.83l-1.41-1.41 1.41-1.41 1.41 1.41-1.41 1.41z"></path></svg>
+                        </button>
+                        <button id="clearBtn" class="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700" title="Clear Canvas">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                         <button id="themeToggle" class="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700" title="Toggle Theme">
+                            <svg id="themeIconSun" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                            <svg id="themeIconMoon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="canvas-container" class="flex-grow bg-gray-100 dark:bg-gray-800 relative w-full h-full">
+                    <canvas id="notebookCanvas" class="absolute top-0 left-0 touch-none"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+            const DB_NAME = 'DigitalLibraryDB';
+            const DB_VERSION = 1;
+            const BOOK_STORE = 'books';
+            let db;
+
+            // --- UI Elements ---
+            const libraryView = document.getElementById('library-view');
+            const readerView = document.getElementById('reader-view');
+            const bookGrid = document.getElementById('book-grid');
+            const libraryLoader = document.getElementById('library-loader');
+            const addBookBtn = document.getElementById('addBookBtn');
+            const addBookInput = document.getElementById('addBookInput');
+            const backToLibraryBtn = document.getElementById('backToLibraryBtn');
+            const readerTitle = document.getElementById('reader-title');
+            
+            const bookContainer = document.getElementById('bookContainer');
+            const pdfLoader = document.getElementById('pdfLoader');
+            const pdfLoadStatus = document.getElementById('pdf-load-status');
+            const canvas = document.getElementById('notebookCanvas');
+            const canvasContainer = document.getElementById('canvas-container');
+            const ctx = canvas.getContext('2d');
+
+            const penColorInput = document.getElementById('penColor');
+            const penSizeInput = document.getElementById('penSize');
+            const eraserBtn = document.getElementById('eraserBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const themeToggle = document.getElementById('themeToggle');
+            const themeIconSun = document.getElementById('themeIconSun');
+            const themeIconMoon = document.getElementById('themeIconMoon');
+
+            let isDrawing = false;
+            let lastX = 0;
+            let lastY = 0;
+            let currentBookId = null;
+
+            // --- Database Functions ---
+            function initDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    request.onerror = (event) => reject("Error opening DB: " + event.target.errorCode);
+                    request.onsuccess = (event) => {
+                        db = event.target.result;
+                        resolve();
+                    };
+                    request.onupgradeneeded = (event) => {
+                        let db = event.target.result;
+                        if (!db.objectStoreNames.contains(BOOK_STORE)) {
+                            db.createObjectStore(BOOK_STORE, { keyPath: 'id', autoIncrement: true });
+                        }
+                    };
+                });
+            }
+
+            // --- UI Switching ---
+            function showLibrary() {
+                readerView.classList.add('opacity-0');
+                setTimeout(() => {
+                    readerView.classList.add('hidden');
+                    libraryView.classList.remove('hidden');
+                    libraryView.classList.remove('opacity-0');
+                    currentBookId = null;
+                    renderLibrary();
+                }, 300);
+            }
+
+            function showReader(bookId) {
+                currentBookId = bookId;
+                libraryView.classList.add('opacity-0');
+                 setTimeout(() => {
+                    libraryView.classList.add('hidden');
+                    readerView.classList.remove('hidden');
+                    readerView.classList.remove('opacity-0');
+                    loadBookIntoReader(bookId);
+                }, 300);
+            }
+
+            // --- Library Functions ---
+            async function renderLibrary() {
+                libraryLoader.classList.remove('hidden');
+                bookGrid.innerHTML = '';
+                const books = await getAllBooks();
+                if (books.length === 0) {
+                     bookGrid.innerHTML = `<p class="col-span-full text-center text-gray-500 mt-10">Your library is empty. Add a book to get started!</p>`;
+                } else {
+                    for (const book of books) {
+                        const card = await createBookCard(book);
+                        bookGrid.appendChild(card);
+                    }
+                }
+                libraryLoader.classList.add('hidden');
+            }
+
+            async function createBookCard(book) {
+                const card = document.createElement('div');
+                card.className = 'group cursor-pointer flex flex-col items-center text-center';
+                card.onclick = () => showReader(book.id);
+
+                const thumbnailContainer = document.createElement('div');
+                thumbnailContainer.className = 'w-full aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-lg shadow-lg overflow-hidden flex items-center justify-center relative';
+                const thumbnail = document.createElement('canvas');
+                thumbnail.className = 'max-w-full max-h-full';
+                thumbnailContainer.appendChild(thumbnail);
+                
+                const title = document.createElement('h3');
+                title.className = 'mt-2 font-semibold text-sm group-hover:text-blue-500 truncate w-full';
+                title.textContent = book.title;
+
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1';
+                const progressBar = document.createElement('div');
+                const progressPercentage = book.progress ? (book.progress * 100).toFixed(0) : 0;
+                progressBar.className = 'bg-blue-600 h-1.5 rounded-full';
+                progressBar.style.width = `${progressPercentage}%`;
+                progressContainer.appendChild(progressBar);
+
+                card.append(thumbnailContainer, title, progressContainer);
+                
+                generateThumbnail(book, thumbnail);
+
+                return card;
+            }
+
+            async function generateThumbnail(book, canvasElement) {
+                try {
+                    const loadingTask = pdfjsLib.getDocument({ data: atob(book.pdfData) });
+                    const pdf = await loadingTask.promise;
+                    const page = await pdf.getPage(1);
+                    const viewport = page.getViewport({ scale: 0.5 });
+                    
+                    canvasElement.width = viewport.width;
+                    canvasElement.height = viewport.height;
+                    const context = canvasElement.getContext('2d');
+                    
+                    await page.render({ canvasContext: context, viewport: viewport }).promise;
+                } catch(e) {
+                    console.error("Thumbnail generation failed", e);
+                }
+            }
+
+
+            async function handleAddBook(file) {
+                const title = file.name.replace('.pdf', '');
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    // Base64 encode for IndexedDB
+                    const pdfData = btoa(e.target.result);
+                    const newBook = {
+                        title: title,
+                        pdfData: pdfData,
+                        notesData: null,
+                        progress: 0
+                    };
+                    const id = await addBook(newBook);
+                    showReader(id);
+                };
+                reader.readAsBinaryString(file);
+            }
+
+            // --- Reader Functions ---
+            async function loadBookIntoReader(bookId) {
+                const book = await getBook(bookId);
+                if (!book) {
+                    alert("Could not find book!");
+                    showLibrary();
+                    return;
+                }
+                
+                readerTitle.textContent = book.title;
+                bookContainer.innerHTML = '';
+                clearCanvas();
+                
+                if (book.notesData) {
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0);
+                    };
+                    img.src = book.notesData;
+                }
+
+                pdfLoader.style.display = 'flex';
+                try {
+                    const loadingTask = pdfjsLib.getDocument({ data: atob(book.pdfData) });
+                    const pdf = await loadingTask.promise;
+                    const numPages = pdf.numPages;
+                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                        pdfLoadStatus.textContent = `Rendering page ${pageNum} of ${numPages}...`;
+                        const page = await pdf.getPage(pageNum);
+                        const scale = 1.5;
+                        const viewport = page.getViewport({ scale });
+                        
+                        const pageCanvas = document.createElement('canvas');
+                        const context = pageCanvas.getContext('2d');
+                        pageCanvas.height = viewport.height;
+                        pageCanvas.width = viewport.width;
+                        pageCanvas.classList.add('mb-4', 'shadow-lg', 'max-w-full', 'h-auto');
+                        
+                        bookContainer.appendChild(pageCanvas);
+                        
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                    }
+                    if(book.progress > 0) {
+                        bookContainer.scrollTop = bookContainer.scrollHeight * book.progress;
+                    }
+                } catch(err) {
+                    console.error("Error loading PDF:", err);
+                    bookContainer.innerHTML = `<div class="flex items-center justify-center h-full"><p class="text-red-500">Failed to load PDF.</p></div>`;
+                } finally {
+                    pdfLoader.style.display = 'none';
+                }
+            }
+
+            const updateProgress = debounce(async () => {
+                if(!currentBookId) return;
+                const progress = bookContainer.scrollTop / (bookContainer.scrollHeight - bookContainer.clientHeight);
+                await updateBook(currentBookId, { progress: progress });
+            }, 500);
+
+
+            // --- Canvas & Core Logic ---
+            function getPenSize() { return penSizeInput.value; }
+            function getPenColor() { return penColorInput.value; }
+            function updateThemeIcon(isDark) {
+                themeIconSun.classList.toggle('hidden', isDark);
+                themeIconMoon.classList.toggle('hidden', !isDark);
+            }
+            function setTheme(isDark) {
+                document.documentElement.classList.toggle('dark', isDark);
+                updateThemeIcon(isDark);
+                localStorage.setItem('notebook-theme', isDark ? 'dark' : 'light');
+            }
+            function debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+            function resizeCanvas() {
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+                tempCtx.drawImage(canvas, 0, 0);
+
+                canvas.width = canvasContainer.offsetWidth;
+                canvas.height = canvasContainer.offsetHeight;
+                
+                ctx.drawImage(tempCanvas, 0, 0);
+
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+            }
+            const getEventCoordinates = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches ? e.touches[0] : e;
+                return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+            };
+            const startDrawing = (e) => {
+                e.preventDefault();
+                isDrawing = true;
+                const { x, y } = getEventCoordinates(e);
+                [lastX, lastY] = [x, y];
+            };
+            const draw = (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const { x, y } = getEventCoordinates(e);
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                [lastX, lastY] = [x, y];
+            };
+            const stopDrawing = () => {
+                if (!isDrawing) return;
+                isDrawing = false;
+                saveNotes();
+            };
+            const saveNotes = debounce(async () => {
+                if (!currentBookId) return;
+                const notesData = canvas.toDataURL('image/png');
+                await updateBook(currentBookId, { notesData: notesData });
+            }, 500);
+            function loadTheme() {
+                const savedTheme = localStorage.getItem('notebook-theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                setTheme(savedTheme ? savedTheme === 'dark' : prefersDark);
+            }
+            function setPenMode() {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = getPenColor();
+                ctx.lineWidth = getPenSize();
+                eraserBtn.classList.remove('bg-blue-200', 'dark:bg-blue-800');
+            }
+            function setEraserMode() {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = getPenSize() * 2;
+                eraserBtn.classList.add('bg-blue-200', 'dark:bg-blue-800');
+            }
+            function clearCanvas() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                saveNotes();
+            }
+
+             // --- IndexedDB CRUD ---
+            function getStore(mode) {
+                const transaction = db.transaction(BOOK_STORE, mode);
+                return transaction.objectStore(BOOK_STORE);
+            }
+            function addBook(book) {
+                return new Promise((resolve, reject) => {
+                    const store = getStore('readwrite');
+                    const request = store.add(book);
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject("Add book failed: " + e.target.errorCode);
+                });
+            }
+            function getBook(id) {
+                 return new Promise((resolve, reject) => {
+                    const store = getStore('readonly');
+                    const request = store.get(id);
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject("Get book failed: " + e.target.errorCode);
+                });
+            }
+            function getAllBooks() {
+                 return new Promise((resolve, reject) => {
+                    const store = getStore('readonly');
+                    const request = store.getAll();
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject("Get all books failed: " + e.target.errorCode);
+                });
+            }
+            async function updateBook(id, dataToUpdate) {
+                return new Promise(async (resolve, reject) => {
+                    const book = await getBook(id);
+                    if (!book) return reject("Book not found");
+
+                    const updatedBook = { ...book, ...dataToUpdate };
+                    
+                    const store = getStore('readwrite');
+                    const request = store.put(updatedBook);
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject("Update book failed: " + e.target.errorCode);
+                });
+            }
+
+            // --- Event Listeners ---
+            addBookBtn.addEventListener('click', () => addBookInput.click());
+            addBookInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && file.type === 'application/pdf') {
+                    handleAddBook(file);
+                } else if(file) {
+                    alert('Please select a valid PDF file.');
+                }
+                addBookInput.value = '';
+            });
+            backToLibraryBtn.addEventListener('click', showLibrary);
+            bookContainer.addEventListener('scroll', updateProgress);
+            
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
+            canvas.addEventListener('touchstart', startDrawing, { passive: false });
+            canvas.addEventListener('touchmove', draw, { passive: false });
+            canvas.addEventListener('touchend', stopDrawing);
+            
+            penColorInput.addEventListener('change', setPenMode);
+            penColorInput.addEventListener('click', setPenMode);
+            penSizeInput.addEventListener('input', () => ctx.globalCompositeOperation === 'source-over' ? setPenMode() : setEraserMode());
+            eraserBtn.addEventListener('click', setEraserMode);
+            clearBtn.addEventListener('click', () => confirm('Are you sure you want to clear this page of notes?') && clearCanvas());
+            themeToggle.addEventListener('click', () => setTheme(!document.documentElement.classList.contains('dark')));
+            window.addEventListener('resize', debounce(resizeCanvas, 250));
+            
+            // --- Initialization ---
+            async function main() {
+                try {
+                    await initDB();
+                    showLibrary();
+                    loadTheme();
+                    resizeCanvas();
+                    setPenMode();
+                } catch(e) {
+                    console.error(e);
+                    document.body.innerHTML = `<div class="w-screen h-screen flex items-center justify-center bg-red-100 text-red-800"><p>Could not initialize the application. Please ensure IndexedDB is enabled in your browser.</p></div>`;
+                }
+            }
+
+            main();
+        });
+    </script>
+</body>
+</html>
